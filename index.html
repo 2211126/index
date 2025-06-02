@@ -1,7 +1,8 @@
+<!DOCTYPE html>
 <html lang="ko" style="width:100vw;height:100vh;">
 <head>
   <meta charset="UTF-8">
-  <title>장욱진 미술관 네트워크 그래프</title>
+  <title>장욱진 미술관 완전 네트워크 그래프 (모든 연결관계 포함)</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     html, body {
@@ -11,6 +12,7 @@
       padding: 0;
       overflow: hidden;
       background: #f6f6f6;
+      font-family: 'Malgun Gothic', sans-serif;
     }
     svg {
       width: 100vw !important;
@@ -34,6 +36,7 @@
     }
     .legend-item { display: flex; align-items: center; margin-bottom: 6px; }
     .legend-color { width: 18px; height: 18px; margin-right: 8px; border-radius: 50%; }
+    .legend-square { width: 18px; height: 18px; margin-right: 8px; border-radius: 3px; }
     #search-box {
       position: absolute;
       top: 20px;
@@ -41,8 +44,8 @@
       z-index: 20;
     }
     #search {
-      width: 180px;
-      padding: 5px 10px;
+      width: 200px;
+      padding: 8px 12px;
       font-size: 15px;
       border: 1px solid #bbb;
       border-radius: 5px;
@@ -62,179 +65,67 @@
       color: #222;
       max-width: 320px;
     }
+    .center-node {
+      stroke: #333 !important;
+      stroke-width: 4px !important;
+    }
+    .hub-node {
+      stroke: #666 !important;
+      stroke-width: 3px !important;
+    }
+    .leaf-node {
+      stroke: #fff !important;
+      stroke-width: 2px !important;
+    }
+    .highlighted {
+      stroke: #ff0000 !important;
+      stroke-width: 5px !important;
+    }
+    .highlighted-text {
+      font-weight: bold !important;
+      fill: #ff0000 !important;
+    }
+    .hub-text {
+      font-weight: bold;
+      font-size: 14px;
+      fill: white;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#ff4444"></div>중심(장욱진)</div>
     <div class="legend-item"><div class="legend-color" style="background:#ff7f7f"></div>인물</div>
     <div class="legend-item"><div class="legend-color" style="background:#7fbf7f"></div>작품</div>
     <div class="legend-item"><div class="legend-color" style="background:#7f7fff"></div>전시</div>
     <div class="legend-item"><div class="legend-color" style="background:#ffbf7f"></div>장소</div>
     <div class="legend-item"><div class="legend-color" style="background:#bf7fff"></div>가족</div>
     <div class="legend-item"><div class="legend-color" style="background:#ff99cc"></div>지인</div>
+    <div class="legend-item"><div class="legend-square" style="background:#333"></div>허브 (사각형)</div>
   </div>
   <div id="search-box">
-    <input id="search" type="text" placeholder="노드 이름 검색 (예: 장욱진)">
+    <input id="search" type="text" placeholder="노드 이름 검색 (예: 장욱진, 독, 김환기)">
   </div>
   <div id="tooltip"></div>
   <svg id="network"></svg>
   <script>
     // 색상 매핑
     const color = d3.scaleOrdinal()
-      .domain(["인물", "작품", "전시", "장소", "가족", "지인"])
-      .range(["#ff7f7f", "#7fbf7f", "#7f7fff", "#ffbf7f", "#bf7fff", "#ff99cc"]);
+      .domain(["center", "인물", "작품", "전시", "장소", "가족", "지인", "hub"])
+      .range(["#ff4444", "#ff7f7f", "#7fbf7f", "#7f7fff", "#ffbf7f", "#bf7fff", "#ff99cc", "#333"]);
 
-    // 데이터 (생략, 기존과 동일하게 유지)
-    const nodes = [
-      // 인물
-      {id: "장욱진", group: "인물", 출생: 1917, 사망: 1990, 태그: "신사실파, 동심의화가", 작품: "독, 자화상, 나무와 나, 까치, 월목, 진진묘, 나무, 들, 가로수, 가족", 관련전시: "장욱진의 삶과 예술세계, 장욱진 백년, 인사동 라인에 서다, 한국 근현대미술 걸작전, 강가의 아틀리에, 장욱진 30주기 기념전, 가장 진지한 고백, 장욱진의 황금방주"},
-      {id: "김환기", group: "인물", 출생: 1913, 사망: 1974, 태그: "신사실파"},
-      {id: "유영국", group: "인물", 출생: 1916, 사망: 2002, 태그: "신사실파"},
-      {id: "백영수", group: "인물", 출생: 1922, 사망: 2018, 태그: "신사실파"},
-      {id: "이규상", group: "인물", 출생: 1918, 사망: 1964, 태그: "신사실파"},
-      {id: "이중섭", group: "인물", 출생: 1916, 사망: 1956, 태그: "신사실파"},
-      // 가족
-      {id: "이순경", group: "가족", 출생: 1920, 사망: 2022, 태그: "가족"},
-      {id: "장정순", group: "가족", 출생: 1942, 태그: "가족"},
-      {id: "장경수", group: "가족", 출생: 1945, 태그: "가족"},
-      {id: "장희순", group: "가족", 출생: 1947, 태그: "가족"},
-      {id: "장혜수", group: "가족", 출생: 1951, 태그: "가족"},
-      // 지인
-      {id: "마해송", group: "지인", 출생: 1905, 사망: 1966, 태그: "아동문학가"},
-      {id: "오수환", group: "지인", 출생: 1946, 태그: "화가"},
-      {id: "최불암", group: "지인", 출생: 1940, 태그: "배우"},
-      {id: "이만익", group: "지인", 출생: 1938, 사망: 2012, 태그: "화가"},
-      {id: "최종태", group: "지인", 출생: 1932, 태그: "조각가"},
-      {id: "경봉스님", group: "지인", 출생: 1892, 사망: 1982, 태그: "스님"},
-      // 작품
-      {id: "독", group: "작품", 제작연도: 1949, 기법: "캔버스에 유채", 크기: "45.1x37.7", 소장처: "국립현대미술관"},
-      {id: "자화상", group: "작품", 제작연도: 1951, 기법: "캔버스에 유채", 크기: "14.8x10.8", 소장처: "개인 소장"},
-      {id: "까치", group: "작품", 제작연도: 1958, 기법: "캔버스에 유채", 크기: "42x31", 소장처: "국립현대미술관"},
-      {id: "월목", group: "작품", 제작연도: 1963, 기법: "캔버스에 유채", 크기: "53.3x38.4", 소장처: "미공개"},
-      {id: "가족", group: "작품", 제작연도: 1973, 기법: "캔버스에 유채", 크기: "17.5x25", 소장처: "미공개"},
-      {id: "나무와 새와 모자", group: "작품", 제작연도: 1973, 기법: "캔버스에 유채", 크기: "27.3x34.8", 소장처: "미공개"},
-      {id: "가로수", group: "작품", 제작연도: 1978, 기법: "캔버스에 유채", 크기: "30x40", 소장처: "장욱진미술문화재단"},
-      {id: "들", group: "작품", 제작연도: 1986, 기법: "캔버스에 유채", 크기: "45x22", 소장처: "미공개"},
-      {id: "나무", group: "작품", 제작연도: 1986, 기법: "캔버스에 유채", 크기: "34.8x24.2", 소장처: "미공개"},
-      {id: "나무와 나", group: "작품", 제작연도: 1988, 기법: "판화", 크기: "45.6x35.5", 소장처: "양주시립장욱진미술관"},
-      {id: "진진묘", group: "작품", 제작연도: 1970, 기법: "캔버스에 유채", 크기: "41x32", 소장처: "미공개"},
-      // 장소
-      {id: "양정고등보통학교", group: "장소", 목적: "교육", 위치: "서울시 양천구"},
-      {id: "무사시노 미술대학", group: "장소", 목적: "교육", 위치: "도쿄 신주쿠구"},
-      {id: "서울대학교", group: "장소", 목적: "교육", 위치: "서울시 관악구"},
-      {id: "통도사", group: "장소", 목적: "종교", 위치: "경남 양산시"},
-      {id: "국립현대미술관", group: "장소", 목적: "미술전시", 위치: "서울시 종로구"},
-      {id: "장욱진 고택", group: "장소", 목적: "주거지", 위치: "경기 용인시"},
-      {id: "장욱진미술문화재단", group: "장소", 목적: "미술문화", 위치: "경기 용인시"},
-      {id: "양주시립장욱진미술관", group: "장소", 목적: "미술전시", 위치: "경기 양주시"},
-      {id: "서울 인사아트센터", group: "장소", 목적: "미술전시", 위치: "서울시 종로구"},
-      {id: "여수 예울마루", group: "장소", 목적: "미술전시", 위치: "전라남도 여수시"},
-      {id: "서울 현대화랑", group: "장소", 목적: "미술전시", 위치: "서울시 종로구"},
-      {id: "국립현대미술관 덕수궁", group: "장소", 목적: "미술전시", 위치: "서울시 중구"},
-      // 전시
-      {id: "장욱진의 삶과 예술세계", group: "전시", 장소: "양주시립장욱진미술관", 기간: "2017.05.26-2018.07.31"},
-      {id: "장욱진 백년, 인사동 라인에 서다", group: "전시", 장소: "서울 인사아트센터", 기간: "2017.07.24-2017.08.27"},
-      {id: "한국 근현대미술 걸작전", group: "전시", 장소: "여수 예울마루", 기간: "2019.09.27-2019.12.22"},
-      {id: "강가의 아틀리에", group: "전시", 장소: "양주시립장욱진미술관", 기간: "2020.10.27-2020.12.13"},
-      {id: "장욱진 30주기 기념전", group: "전시", 장소: "서울 현대화랑", 기간: "2021.01.13-2021.02.28"},
-      {id: "가장 진지한 고백", group: "전시", 장소: "국립현대미술관 덕수궁", 기간: "2023.09.14-2024.02.12"},
-      {id: "장욱진의 황금방주", group: "전시", 장소: "양주시립장욱진미술관", 기간: "2024.03.12-2024.07.28"}
-    ];
-
-    // 링크 (관계)
-    const links = [
-      // 인물-인물(신사실파)
-      {source: "장욱진", target: "김환기"},
-      {source: "장욱진", target: "유영국"},
-      {source: "장욱진", target: "백영수"},
-      {source: "장욱진", target: "이규상"},
-      {source: "장욱진", target: "이중섭"},
-      {source: "김환기", target: "유영국"},
-      {source: "김환기", target: "백영수"},
-      {source: "김환기", target: "이규상"},
-      {source: "김환기", target: "이중섭"},
-      {source: "유영국", target: "백영수"},
-      {source: "유영국", target: "이규상"},
-      {source: "유영국", target: "이중섭"},
-      {source: "백영수", target: "이규상"},
-      {source: "백영수", target: "이중섭"},
-      {source: "이규상", target: "이중섭"},
-      // 장욱진-지인
-      {source: "장욱진", target: "마해송"},
-      {source: "장욱진", target: "오수환"},
-      {source: "장욱진", target: "최불암"},
-      {source: "장욱진", target: "이만익"},
-      {source: "장욱진", target: "최종태"},
-      {source: "장욱진", target: "경봉스님"},
-      // 장욱진-가족
-      {source: "장욱진", target: "이순경"},
-      {source: "장욱진", target: "장정순"},
-      {source: "장욱진", target: "장경수"},
-      {source: "장욱진", target: "장희순"},
-      {source: "장욱진", target: "장혜수"},
-      // 가족-가족
-      {source: "이순경", target: "장정순"},
-      {source: "이순경", target: "장경수"},
-      {source: "이순경", target: "장희순"},
-      {source: "이순경", target: "장혜수"},
-      {source: "장정순", target: "장경수"},
-      {source: "장정순", target: "장희순"},
-      {source: "장정순", target: "장혜수"},
-      {source: "장경수", target: "장희순"},
-      {source: "장경수", target: "장혜수"},
-      {source: "장희순", target: "장혜수"},
-      // 장욱진-작품
-      {source: "장욱진", target: "독"},
-      {source: "장욱진", target: "자화상"},
-      {source: "장욱진", target: "까치"},
-      {source: "장욱진", target: "월목"},
-      {source: "장욱진", target: "가족"},
-      {source: "장욱진", target: "나무와 새와 모자"},
-      {source: "장욱진", target: "가로수"},
-      {source: "장욱진", target: "들"},
-      {source: "장욱진", target: "나무"},
-      {source: "장욱진", target: "나무와 나"},
-      {source: "장욱진", target: "진진묘"},
-      // 작품-소장처
-      {source: "독", target: "국립현대미술관"},
-      {source: "까치", target: "국립현대미술관"},
-      {source: "가로수", target: "장욱진미술문화재단"},
-      {source: "나무와 나", target: "양주시립장욱진미술관"},
-      // 인물-장소(학력, 연관)
-      {source: "장욱진", target: "양정고등보통학교"},
-      {source: "장욱진", target: "무사시노 미술대학"},
-      {source: "장욱진", target: "서울대학교"},
-      {source: "장욱진", target: "통도사"},
-      {source: "장욱진", target: "국립현대미술관"},
-      {source: "장욱진", target: "장욱진 고택"},
-      {source: "장욱진", target: "장욱진미술문화재단"},
-      {source: "장욱진", target: "양주시립장욱진미술관"},
-      {source: "장욱진", target: "서울 인사아트센터"},
-      {source: "장욱진", target: "여수 예울마루"},
-      {source: "장욱진", target: "서울 현대화랑"},
-      // 가족-장소
-      {source: "이순경", target: "장욱진 고택"},
-      {source: "장혜수", target: "장욱진 고택"},
-      {source: "장경수", target: "장욱진미술문화재단"},
-      {source: "장정순", target: "장욱진미술문화재단"},
-      {source: "장경수", target: "양주시립장욱진미술관"},
-      // 전시-장소
-      {source: "장욱진의 삶과 예술세계", target: "양주시립장욱진미술관"},
-      {source: "장욱진 백년, 인사동 라인에 서다", target: "서울 인사아트센터"},
-      {source: "한국 근현대미술 걸작전", target: "여수 예울마루"},
-      {source: "강가의 아틀리에", target: "양주시립장욱진미술관"},
-      {source: "장욱진 30주기 기념전", target: "서울 현대화랑"},
-      {source: "가장 진지한 고백", target: "국립현대미술관 덕수궁"},
-      {source: "장욱진의 황금방주", target: "양주시립장욱진미술관"},
-      // 전시-작가
-      {source: "장욱진의 삶과 예술세계", target: "장욱진"},
-      {source: "장욱진 백년, 인사동 라인에 서다", target: "장욱진"},
-      {source: "한국 근현대미술 걸작전", target: "장욱진"},
-      {source: "강가의 아틀리에", target: "장욱진"},
-      {source: "장욱진 30주기 기념전", target: "장욱진"},
-      {source: "가장 진지한 고백", target: "장욱진"},
-      {source: "장욱진의 황금방주", target: "장욱진"}
-    ];
+    // 허브별 색상 매핑 (사각형용)
+    const hubColors = {
+      "인물허브": "#ff7f7f",
+      "작품허브": "#7fbf7f", 
+      "전시허브": "#7f7fff",
+      "장소허브": "#ffbf7f",
+      "가족허브": "#bf7fff",
+      "지인허브": "#ff99cc"
+    };
 
     // 화면 크기 동적 계산
     function getSize() {
@@ -244,7 +135,251 @@
       };
     }
 
-    // SVG 및 시뮬레이션 설정
+    // 데이터 구성 (이미지 표 데이터 완전 반영)
+    const nodes = [
+      // 중심 노드
+      {id: "장욱진", group: "center", level: 0, type: "center", 
+       출생: 1917, 사망: 1990, 태그: "신사실파, 동심의화가"},
+      
+      // 허브 노드들 (1차 레벨) - 사각형으로 표시
+      {id: "인물허브", group: "hub", level: 1, type: "hub", 
+       description: "신사실파 동료 화가들", displayText: "인물"},
+      {id: "작품허브", group: "hub", level: 1, type: "hub", 
+       description: "장욱진 대표작품들", displayText: "작품"},
+      {id: "전시허브", group: "hub", level: 1, type: "hub", 
+       description: "장욱진 관련 전시", displayText: "전시"},
+      {id: "장소허브", group: "hub", level: 1, type: "hub", 
+       description: "교육기관 및 미술관", displayText: "장소"},
+      {id: "가족허브", group: "hub", level: 1, type: "hub", 
+       description: "장욱진의 가족", displayText: "가족"},
+      {id: "지인허브", group: "hub", level: 1, type: "hub", 
+       description: "장욱진의 지인들", displayText: "지인"},
+      
+      // 인물 노드들 (2차 레벨)
+      {id: "김환기", group: "인물", level: 2, type: "leaf", 
+       출생: 1913, 사망: 1974, 태그: "신사실파"},
+      {id: "유영국", group: "인물", level: 2, type: "leaf", 
+       출생: 1916, 사망: 2002, 태그: "신사실파"},
+      {id: "백영수", group: "인물", level: 2, type: "leaf", 
+       출생: 1922, 사망: 2018, 태그: "신사실파"},
+      {id: "이규상", group: "인물", level: 2, type: "leaf", 
+       출생: 1918, 사망: 1964, 태그: "신사실파"},
+      {id: "이중섭", group: "인물", level: 2, type: "leaf", 
+       출생: 1916, 사망: 1956, 태그: "신사실파"},
+      
+      // 작품 노드들 (2차 레벨)
+      {id: "독", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1949, 기법: "캔버스에 유채", 크기: "45.1x37.7", 소장처: "국립현대미술관"},
+      {id: "자화상", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1951, 기법: "캔버스에 유채", 크기: "14.8x10.8", 소장처: "개인 소장"},
+      {id: "까치", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1958, 기법: "캔버스에 유채", 크기: "42x31", 소장처: "국립현대미술관"},
+      {id: "월목", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1963, 기법: "캔버스에 유채", 크기: "53.3x38.4", 소장처: "미공개"},
+      {id: "가족", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1973, 기법: "캔버스에 유채", 크기: "17.5x25", 소장처: "미공개"},
+      {id: "나무와 새와 모자", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1973, 기법: "캔버스에 유채", 크기: "27.3x34.8", 소장처: "미공개"},
+      {id: "가로수", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1978, 기법: "캔버스에 유채", 크기: "30x40", 소장처: "장욱진미술문화재단"},
+      {id: "들", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1986, 기법: "캔버스에 유채", 크기: "45x22", 소장처: "미공개"},
+      {id: "나무", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1986, 기법: "캔버스에 유채", 크기: "34.8x24.2", 소장처: "미공개"},
+      {id: "나무와 나", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1988, 기법: "판화", 크기: "45.6x35.5", 소장처: "양주시립장욱진미술관"},
+      {id: "진진묘", group: "작품", level: 2, type: "leaf", 
+       제작연도: 1970, 기법: "캔버스에 유채", 크기: "41x32", 소장처: "미공개"},
+      
+      // 전시 노드들 (2차 레벨 - 표 데이터 완전 반영)
+      {id: "장욱진의 삶과 예술세계", group: "전시", level: 2, type: "leaf", 
+       코드: "AE01", 기간: "2017.05.26-2018.07.31", 장소: "양주시립장욱진미술관"},
+      {id: "장욱진 백년, 인사동 라인에 서다", group: "전시", level: 2, type: "leaf", 
+       코드: "AE02", 기간: "2017.07.24-2017.08.27", 장소: "서울 인사아트센터"},
+      {id: "한국 근현대미술 걸작전", group: "전시", level: 2, type: "leaf", 
+       코드: "AE03", 기간: "2019.09.27-2019.12.22", 장소: "여수 예울마루"},
+      {id: "강가의 아틀리에", group: "전시", level: 2, type: "leaf", 
+       코드: "AE04", 기간: "2020.10.27-2020.12.13", 장소: "양주시립장욱진미술관"},
+      {id: "장욱진 30주기 기념전, 기가, 자연", group: "전시", level: 2, type: "leaf", 
+       코드: "AE05", 기간: "2021.01.13-2021.02.28", 장소: "서울 현대화랑"},
+      {id: "가장 진지한 고백: 장욱진 회고전", group: "전시", level: 2, type: "leaf", 
+       코드: "AE06", 기간: "2023.09.14-2024.02.12", 장소: "국립현대미술관 덕수궁"},
+      {id: "장욱진의 황금방주", group: "전시", level: 2, type: "leaf", 
+       코드: "AE07", 기간: "2024.03.12-2024.07.28", 장소: "양주시립장욱진미술관"},
+      
+      // 장소 노드들 (2차 레벨 - 표 데이터 완전 반영)
+      {id: "양정고등보통학교", group: "장소", level: 2, type: "leaf", 
+       코드: "LC01", 목적: "교육", 위치: "대한민국", 건립: "1905년"},
+      {id: "무사시노미술대학", group: "장소", level: 2, type: "leaf", 
+       코드: "LC02", 목적: "교육", 위치: "일본", 건립: "1929년"},
+      {id: "서울대학교", group: "장소", level: 2, type: "leaf", 
+       코드: "LC03", 목적: "교육", 위치: "대한민국", 건립: "1946년"},
+      {id: "홍도", group: "장소", level: 2, type: "leaf", 
+       코드: "LC04", 목적: "종교", 위치: "대한민국", 건립: "643년"},
+      {id: "국립현대미술관", group: "장소", level: 2, type: "leaf", 
+       코드: "LC05", 목적: "미술전시", 위치: "대한민국", 건립: "1969년"},
+      {id: "장욱진고택", group: "장소", level: 2, type: "leaf", 
+       코드: "LC06", 목적: "수지기", 위치: "대한민국", 건립: "1884년"},
+      {id: "장욱진미술문화재단", group: "장소", level: 2, type: "leaf", 
+       코드: "LC07", 목적: "미술문화재단", 위치: "대한민국", 건립: "1997년"},
+      {id: "양주시립장욱진미술관", group: "장소", level: 2, type: "leaf", 
+       코드: "LC08", 목적: "미술전시", 위치: "대한민국", 건립: "2014년"},
+      
+      // ★ 추가 장소 노드들 (표에서 빠진 것들 추가) ★
+      {id: "서울 인사아트센터", group: "장소", level: 2, type: "leaf", 
+       목적: "미술전시", 위치: "서울시 종로구", 건립: "2000년대"},
+      {id: "여수 예울마루", group: "장소", level: 2, type: "leaf", 
+       목적: "미술전시", 위치: "전라남도 여수시", 건립: "2010년"},
+      {id: "서울 현대화랑", group: "장소", level: 2, type: "leaf", 
+       목적: "미술전시", 위치: "서울시 종로구", 건립: "1970년"},
+      {id: "국립현대미술관 덕수궁", group: "장소", level: 2, type: "leaf", 
+       목적: "미술전시", 위치: "서울시 중구", 건립: "1998년"},
+      
+      // 가족 노드들 (2차 레벨)
+      {id: "이순경", group: "가족", level: 2, type: "leaf", 
+       출생: 1920, 사망: 2022, 태그: "배우자"},
+      {id: "장정순", group: "가족", level: 2, type: "leaf", 
+       출생: 1942, 태그: "딸"},
+      {id: "장경수", group: "가족", level: 2, type: "leaf", 
+       출생: 1945, 태그: "아들"},
+      {id: "장희순", group: "가족", level: 2, type: "leaf", 
+       출생: 1947, 태그: "딸"},
+      {id: "장혜수", group: "가족", level: 2, type: "leaf", 
+       출생: 1951, 태그: "딸"},
+      
+      // 지인 노드들 (2차 레벨)
+      {id: "마해송", group: "지인", level: 2, type: "leaf", 
+       출생: 1905, 사망: 1966, 태그: "아동문학가"},
+      {id: "오수환", group: "지인", level: 2, type: "leaf", 
+       출생: 1946, 태그: "화가"},
+      {id: "최불암", group: "지인", level: 2, type: "leaf", 
+       출생: 1940, 태그: "배우"},
+      {id: "이만익", group: "지인", level: 2, type: "leaf", 
+       출생: 1938, 사망: 2012, 태그: "화가"},
+      {id: "최종태", group: "지인", level: 2, type: "leaf", 
+       출생: 1932, 태그: "조각가"},
+      {id: "경봉스님", group: "지인", level: 2, type: "leaf", 
+       출생: 1892, 사망: 1982, 태그: "스님"}
+    ];
+
+    // ★ 링크 구성 (표 데이터 기반 완전한 연결관계) ★
+    const links = [
+      // 중심 노드 → 허브 노드들
+      {source: "장욱진", target: "인물허브", type: "center-hub"},
+      {source: "장욱진", target: "작품허브", type: "center-hub"},
+      {source: "장욱진", target: "전시허브", type: "center-hub"},
+      {source: "장욱진", target: "장소허브", type: "center-hub"},
+      {source: "장욱진", target: "가족허브", type: "center-hub"},
+      {source: "장욱진", target: "지인허브", type: "center-hub"},
+      
+      // 허브 → 세부 노드들
+      {source: "인물허브", target: "김환기", type: "hub-leaf"},
+      {source: "인물허브", target: "유영국", type: "hub-leaf"},
+      {source: "인물허브", target: "백영수", type: "hub-leaf"},
+      {source: "인물허브", target: "이규상", type: "hub-leaf"},
+      {source: "인물허브", target: "이중섭", type: "hub-leaf"},
+      
+      {source: "작품허브", target: "독", type: "hub-leaf"},
+      {source: "작품허브", target: "자화상", type: "hub-leaf"},
+      {source: "작품허브", target: "까치", type: "hub-leaf"},
+      {source: "작품허브", target: "월목", type: "hub-leaf"},
+      {source: "작품허브", target: "가족", type: "hub-leaf"},
+      {source: "작품허브", target: "나무와 새와 모자", type: "hub-leaf"},
+      {source: "작품허브", target: "가로수", type: "hub-leaf"},
+      {source: "작품허브", target: "들", type: "hub-leaf"},
+      {source: "작품허브", target: "나무", type: "hub-leaf"},
+      {source: "작품허브", target: "나무와 나", type: "hub-leaf"},
+      {source: "작품허브", target: "진진묘", type: "hub-leaf"},
+      
+      {source: "전시허브", target: "장욱진의 삶과 예술세계", type: "hub-leaf"},
+      {source: "전시허브", target: "장욱진 백년, 인사동 라인에 서다", type: "hub-leaf"},
+      {source: "전시허브", target: "한국 근현대미술 걸작전", type: "hub-leaf"},
+      {source: "전시허브", target: "강가의 아틀리에", type: "hub-leaf"},
+      {source: "전시허브", target: "장욱진 30주기 기념전, 기가, 자연", type: "hub-leaf"},
+      {source: "전시허브", target: "가장 진지한 고백: 장욱진 회고전", type: "hub-leaf"},
+      {source: "전시허브", target: "장욱진의 황금방주", type: "hub-leaf"},
+      
+      {source: "장소허브", target: "양정고등보통학교", type: "hub-leaf"},
+      {source: "장소허브", target: "무사시노미술대학", type: "hub-leaf"},
+      {source: "장소허브", target: "서울대학교", type: "hub-leaf"},
+      {source: "장소허브", target: "홍도", type: "hub-leaf"},
+      {source: "장소허브", target: "국립현대미술관", type: "hub-leaf"},
+      {source: "장소허브", target: "장욱진고택", type: "hub-leaf"},
+      {source: "장소허브", target: "장욱진미술문화재단", type: "hub-leaf"},
+      {source: "장소허브", target: "양주시립장욱진미술관", type: "hub-leaf"},
+      {source: "장소허브", target: "서울 인사아트센터", type: "hub-leaf"},
+      {source: "장소허브", target: "여수 예울마루", type: "hub-leaf"},
+      {source: "장소허브", target: "서울 현대화랑", type: "hub-leaf"},
+      {source: "장소허브", target: "국립현대미술관 덕수궁", type: "hub-leaf"},
+      
+      {source: "가족허브", target: "이순경", type: "hub-leaf"},
+      {source: "가족허브", target: "장정순", type: "hub-leaf"},
+      {source: "가족허브", target: "장경수", type: "hub-leaf"},
+      {source: "가족허브", target: "장희순", type: "hub-leaf"},
+      {source: "가족허브", target: "장혜수", type: "hub-leaf"},
+      
+      {source: "지인허브", target: "마해송", type: "hub-leaf"},
+      {source: "지인허브", target: "오수환", type: "hub-leaf"},
+      {source: "지인허브", target: "최불암", type: "hub-leaf"},
+      {source: "지인허브", target: "이만익", type: "hub-leaf"},
+      {source: "지인허브", target: "최종태", type: "hub-leaf"},
+      {source: "지인허브", target: "경봉스님", type: "hub-leaf"},
+      
+      // ★ 2차 요소간 직접 연결 (완전한 연결관계) ★
+      
+      // 신사실파 화가들끼리 연결
+      {source: "김환기", target: "유영국", type: "peer"},
+      {source: "김환기", target: "백영수", type: "peer"},
+      {source: "김환기", target: "이규상", type: "peer"},
+      {source: "김환기", target: "이중섭", type: "peer"},
+      {source: "유영국", target: "백영수", type: "peer"},
+      {source: "유영국", target: "이규상", type: "peer"},
+      {source: "유영국", target: "이중섭", type: "peer"},
+      {source: "백영수", target: "이규상", type: "peer"},
+      {source: "백영수", target: "이중섭", type: "peer"},
+      {source: "이규상", target: "이중섭", type: "peer"},
+      
+      // 가족끼리 연결
+      {source: "이순경", target: "장정순", type: "peer"},
+      {source: "이순경", target: "장경수", type: "peer"},
+      {source: "이순경", target: "장희순", type: "peer"},
+      {source: "이순경", target: "장혜수", type: "peer"},
+      {source: "장정순", target: "장경수", type: "peer"},
+      {source: "장정순", target: "장희순", type: "peer"},
+      {source: "장정순", target: "장혜수", type: "peer"},
+      {source: "장경수", target: "장희순", type: "peer"},
+      {source: "장경수", target: "장혜수", type: "peer"},
+      {source: "장희순", target: "장혜수", type: "peer"},
+      
+      // 작품-소장처 연결
+      {source: "독", target: "국립현대미술관", type: "peer"},
+      {source: "까치", target: "국립현대미술관", type: "peer"},
+      {source: "나무와 나", target: "양주시립장욱진미술관", type: "peer"},
+      {source: "가로수", target: "장욱진미술문화재단", type: "peer"},
+      
+      // ★ 전시-장소 연결 (표 데이터 완전 반영) ★
+      {source: "장욱진의 삶과 예술세계", target: "양주시립장욱진미술관", type: "peer"},
+      {source: "장욱진 백년, 인사동 라인에 서다", target: "서울 인사아트센터", type: "peer"},
+      {source: "한국 근현대미술 걸작전", target: "여수 예울마루", type: "peer"},
+      {source: "강가의 아틀리에", target: "양주시립장욱진미술관", type: "peer"},
+      {source: "장욱진 30주기 기념전, 기가, 자연", target: "서울 현대화랑", type: "peer"},
+      {source: "가장 진지한 고백: 장욱진 회고전", target: "국립현대미술관 덕수궁", type: "peer"},
+      {source: "장욱진의 황금방주", target: "양주시립장욱진미술관", type: "peer"},
+      
+      
+      // 가족과 거주지 연결
+      {source: "이순경", target: "장욱진고택", type: "peer"},
+      {source: "장혜수", target: "장욱진고택", type: "peer"},
+      {source: "장경수", target: "장욱진미술문화재단", type: "peer"},
+      {source: "장정순", target: "장욱진미술문화재단", type: "peer"},
+      
+      // 지인들 간의 교류 연결
+      {source: "마해송", target: "오수환", type: "peer"},
+      {source: "오수환", target: "이만익", type: "peer"},
+      {source: "최불암", target: "경봉스님", type: "peer"}
+    ];
+
+    // SVG 및 시뮬레이션 설정 (기존과 동일)
     let {width, height} = getSize();
     const svg = d3.select("#network")
       .attr("width", "100%")
@@ -254,57 +389,106 @@
     // 확대/축소
     const container = svg.append("g");
     svg.call(d3.zoom()
-      .scaleExtent([0.4, 3])
+      .scaleExtent([0.3, 3])
       .on("zoom", ({transform}) => container.attr("transform", transform))
     );
 
     // 링크
     const link = container.append("g")
-      .attr("stroke", "#aaa")
-      .attr("stroke-opacity", 0.5)
+      .attr("stroke", "#999")
+      .attr("stroke-opacity", 0.6)
       .selectAll("line")
       .data(links)
       .join("line")
-      .attr("stroke-width", 2);
+      .attr("stroke-width", d => {
+        if (d.type === "center-hub") return 4;
+        if (d.type === "hub-leaf") return 2;
+        if (d.type === "direct") return 3;
+        if (d.type === "peer") return 1.5;
+        return 2;
+      })
+      .attr("stroke-dasharray", d => {
+        if (d.type === "peer") return "5,5";
+        if (d.type === "direct") return "10,5";
+        return null;
+      })
+      .attr("stroke", d => {
+        if (d.type === "direct") return "#ff6600";
+        return "#999";
+      });
 
-    // 노드
+    // 노드 그룹
     const node = container.append("g")
       .selectAll("g")
       .data(nodes)
       .join("g")
-      .attr("class", d => "node " + d.group);
+      .attr("class", d => `node ${d.type}`);
 
-    node.append("circle")
-      .attr("r", d => {
-        if (d.group === "인물") return 28;
-        if (d.group === "작품") return 18;
-        if (d.group === "전시") return 20;
-        if (d.group === "장소") return 24;
-        if (d.group === "가족") return 20;
-        if (d.group === "지인") return 18;
-        return 16;
-      })
-      .attr("fill", d => color(d.group))
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 2);
+    // 허브는 사각형, 나머지는 원형
+    node.each(function(d) {
+      const g = d3.select(this);
+      
+      if (d.type === "hub") {
+        // 허브 노드는 사각형으로 생성
+        g.append("rect")
+          .attr("width", 80)
+          .attr("height", 40)
+          .attr("x", -40)
+          .attr("y", -20)
+          .attr("fill", hubColors[d.id] || "#333")
+          .attr("stroke", "#666")
+          .attr("stroke-width", 3)
+          .attr("rx", 5)
+          .attr("class", "hub-node");
+        
+        // 허브 텍스트
+        g.append("text")
+          .text(d.displayText)
+          .attr("class", "hub-text")
+          .attr("x", 0)
+          .attr("y", 0);
+          
+      } else {
+        // 일반 노드는 원형으로 생성
+        g.append("circle")
+          .attr("r", d => {
+            if (d.type === "center") return 40;
+            if (d.group === "인물") return 20;
+            if (d.group === "작품") return 16;
+            if (d.group === "전시") return 18;
+            if (d.group === "장소") return 20;
+            if (d.group === "가족") return 18;
+            if (d.group === "지인") return 16;
+            return 14;
+          })
+          .attr("fill", d => color(d.group))
+          .attr("stroke", "#fff")
+          .attr("stroke-width", 2)
+          .attr("class", d => d.type + "-node");
+        
+        // 일반 노드 텍스트
+        g.append("text")
+          .text(d => d.id.length > 8 ? d.id.slice(0,8) + "…" : d.id)
+          .attr("font-size", d => d.type === "center" ? "14px" : "10px")
+          .attr("text-anchor", "middle")
+          .attr("dy", ".35em")
+          .attr("pointer-events", "none")
+          .attr("font-weight", d => d.type === "center" ? "bold" : "normal");
+      }
+    });
 
-    node.append("text")
-      .text(d => d.id.length > 8 ? d.id.slice(0,8) + "…" : d.id)
-      .attr("font-size", "11px")
-      .attr("text-anchor", "middle")
-      .attr("dy", ".35em")
-      .attr("pointer-events", "none");
-
-    // 툴팁
+    // 툴팁 (기존과 동일)
     const tooltip = d3.select("#tooltip");
     node.on("mouseover", (event, d) => {
       let html = `<b>${d.id}</b><br>`;
-      if (d.group === "인물" || d.group === "가족" || d.group === "지인") {
+      if (d.type === "hub") {
+        html += d.description ? `${d.description}<br>` : '';
+      }
+      if (d.코드) html += `코드: ${d.코드}<br>`;
+      if (d.group === "인물" || d.group === "가족" || d.group === "지인" || d.group === "center") {
         html += d.출생 ? `출생: ${d.출생}` : '';
         html += d.사망 ? ` - 사망: ${d.사망}<br>` : '<br>';
         html += d.태그 ? `태그: ${d.태그}<br>` : '';
-        html += d.작품 ? `대표작: ${d.작품}<br>` : '';
-        html += d.관련전시 ? `전시: ${d.관련전시}<br>` : '';
       }
       if (d.group === "작품") {
         html += d.제작연도 ? `연도: ${d.제작연도}<br>` : '';
@@ -313,12 +497,13 @@
         html += d.소장처 ? `소장처: ${d.소장처}<br>` : '';
       }
       if (d.group === "전시") {
-        html += d.장소 ? `장소: ${d.장소}<br>` : '';
         html += d.기간 ? `기간: ${d.기간}<br>` : '';
+        html += d.장소 ? `장소: ${d.장소}<br>` : '';
       }
       if (d.group === "장소") {
         html += d.목적 ? `목적: ${d.목적}<br>` : '';
         html += d.위치 ? `위치: ${d.위치}<br>` : '';
+        html += d.건립 ? `건립: ${d.건립}<br>` : '';
       }
       tooltip.html(html)
         .style("display", "block")
@@ -329,26 +514,37 @@
         .style("top", (event.pageY - 10) + "px");
     }).on("mouseout", () => tooltip.style("display", "none"));
 
-    // 드래그
+    // 드래그 (기존과 동일)
     node.call(d3.drag()
       .on("start", dragstarted)
       .on("drag", dragged)
       .on("end", dragended)
     );
 
-    // 시뮬레이션
+    // 시뮬레이션 (기존과 동일)
     let simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(120))
-      .force("charge", d3.forceManyBody().strength(-380))
+      .force("link", d3.forceLink(links).id(d => d.id).distance(d => {
+        if (d.type === "center-hub") return 200;
+        if (d.type === "hub-leaf") return 150;
+        if (d.type === "direct") return 100;
+        if (d.type === "peer") return 80;
+        return 120;
+      }))
+      .force("charge", d3.forceManyBody().strength(d => {
+        if (d.type === "center") return -800;
+        if (d.type === "hub") return -600;
+        return -300;
+      }))
       .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("radial", d3.forceRadial(d => {
+        if (d.type === "center") return 0;
+        if (d.type === "hub") return 200;
+        return 350;
+      }, width / 2, height / 2))
       .force("collision", d3.forceCollide().radius(d => {
-        if (d.group === "인물") return 40;
-        if (d.group === "작품") return 26;
-        if (d.group === "전시") return 28;
-        if (d.group === "장소") return 32;
-        if (d.group === "가족") return 28;
-        if (d.group === "지인") return 24;
-        return 22;
+        if (d.type === "center") return 50;
+        if (d.type === "hub") return 50;
+        return 25;
       }));
 
     simulation.on("tick", () => {
@@ -374,22 +570,65 @@
       d.fx = null; d.fy = null;
     }
 
-    // 검색 기능
+    // 검색 기능 (기존과 동일)
     d3.select("#search").on("input", function() {
       const term = this.value.trim().toLowerCase();
-      node.selectAll("circle")
-        .attr("stroke", d => term && d.id.toLowerCase().includes(term) ? "#222" : "#fff")
-        .attr("stroke-width", d => term && d.id.toLowerCase().includes(term) ? 5 : 2);
+      
+      node.selectAll("circle, rect")
+        .classed("highlighted", false)
+        .attr("stroke", d => {
+          if (d.type === "center") return "#333";
+          if (d.type === "hub") return "#666";
+          return "#fff";
+        })
+        .attr("stroke-width", d => {
+          if (d.type === "center") return 4;
+          if (d.type === "hub") return 3;
+          return 2;
+        });
+      
       node.selectAll("text")
-        .attr("font-weight", d => term && d.id.toLowerCase().includes(term) ? "bold" : "normal")
-        .attr("fill", d => term && d.id.toLowerCase().includes(term) ? "#222" : "#444");
+        .classed("highlighted-text", false)
+        .attr("font-weight", d => {
+          if (d.type === "center") return "bold";
+          if (d.type === "hub") return "bold";
+          return "normal";
+        })
+        .attr("fill", d => d.type === "hub" ? "white" : "#444");
+      
+      if (term) {
+        const matchedNodes = nodes.filter(d => 
+          d.id.toLowerCase().includes(term) || 
+          (d.태그 && d.태그.toLowerCase().includes(term)) ||
+          (d.소장처 && d.소장처.toLowerCase().includes(term)) ||
+          (d.장소 && d.장소.toLowerCase().includes(term)) ||
+          (d.displayText && d.displayText.toLowerCase().includes(term)) ||
+          (d.코드 && d.코드.toLowerCase().includes(term))
+        );
+        
+        matchedNodes.forEach(matchedNode => {
+          node.filter(d => d.id === matchedNode.id)
+            .selectAll("circle, rect")
+            .classed("highlighted", true);
+          
+          node.filter(d => d.id === matchedNode.id)
+            .selectAll("text")
+            .classed("highlighted-text", true);
+        });
+      }
     });
 
-    // 창 크기 변경 시 반응형 처리
+    // 창 크기 변경 시 반응형 처리 (기존과 동일)
     window.addEventListener("resize", () => {
       const size = getSize();
       svg.attr("viewBox", `0 0 ${size.width} ${size.height}`);
+      
       simulation.force("center", d3.forceCenter(size.width / 2, size.height / 2));
+      simulation.force("radial", d3.forceRadial(d => {
+        if (d.type === "center") return 0;
+        if (d.type === "hub") return 200;
+        return 350;
+      }, size.width / 2, size.height / 2));
       simulation.alpha(0.5).restart();
     });
   </script>
