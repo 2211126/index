@@ -2,7 +2,7 @@
 <html lang="ko" style="width:100vw;height:100vh;">
 <head>
   <meta charset="UTF-8">
-  <title>장욱진 미술관 완전 네트워크 그래프 (모든 연결관계 포함)</title>
+  <title>장욱진 미술관 네트워크 그래프 (인물 계층 구조)</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     html, body {
@@ -33,6 +33,8 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
       font-size: 14px;
       z-index: 10;
+      max-height: 500px;
+      overflow-y: auto;
     }
     .legend-item { display: flex; align-items: center; margin-bottom: 6px; }
     .legend-color { width: 18px; height: 18px; margin-right: 8px; border-radius: 50%; }
@@ -73,6 +75,10 @@
       stroke: #666 !important;
       stroke-width: 3px !important;
     }
+    .sub-hub-node {
+      stroke: #888 !important;
+      stroke-width: 2px !important;
+    }
     .leaf-node {
       stroke: #fff !important;
       stroke-width: 2px !important;
@@ -93,41 +99,50 @@
       dominant-baseline: middle;
       pointer-events: none;
     }
+    .sub-hub-text {
+      font-weight: bold;
+      font-size: 12px;
+      fill: white;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <div class="legend">
     <div class="legend-item"><div class="legend-color" style="background:#ff4444"></div>중심(장욱진)</div>
-    <div class="legend-item"><div class="legend-color" style="background:#ff7f7f"></div>인물</div>
+    <div class="legend-item"><div class="legend-square" style="background:#ff7f7f"></div>1차 허브</div>
+    <div class="legend-item"><div class="legend-square" style="background:#ffaaaa"></div>2차 허브 (인물 세분화)</div>
+    <div class="legend-item"><div class="legend-color" style="background:#ff9999"></div>신사실파</div>
+    <div class="legend-item"><div class="legend-color" style="background:#ff99cc"></div>지인</div>
+    <div class="legend-item"><div class="legend-color" style="background:#bf7fff"></div>가족</div>
     <div class="legend-item"><div class="legend-color" style="background:#7fbf7f"></div>작품</div>
     <div class="legend-item"><div class="legend-color" style="background:#7f7fff"></div>전시</div>
     <div class="legend-item"><div class="legend-color" style="background:#ffbf7f"></div>장소</div>
-    <div class="legend-item"><div class="legend-color" style="background:#bf7fff"></div>가족</div>
-    <div class="legend-item"><div class="legend-color" style="background:#ff99cc"></div>지인</div>
-    <div class="legend-item"><div class="legend-square" style="background:#333"></div>허브 (사각형)</div>
   </div>
   <div id="search-box">
-    <input id="search" type="text" placeholder="노드 이름 검색 (예: 장욱진, 독, 김환기)">
+    <input id="search" type="text" placeholder="노드 이름 검색 (예: 장욱진, 김환기, 독)">
   </div>
   <div id="tooltip"></div>
   <svg id="network"></svg>
   <script>
     // 색상 매핑
     const color = d3.scaleOrdinal()
-      .domain(["center", "인물", "작품", "전시", "장소", "가족", "지인", "hub"])
-      .range(["#ff4444", "#ff7f7f", "#7fbf7f", "#7f7fff", "#ffbf7f", "#bf7fff", "#ff99cc", "#333"]);
+      .domain(["center", "hub", "sub-hub", "신사실파", "지인", "가족", "작품", "전시", "장소"])
+      .range(["#ff4444", "#333", "#666", "#ff9999", "#ff99cc", "#bf7fff", "#7fbf7f", "#7f7fff", "#ffbf7f"]);
 
-    // 허브별 색상 매핑 (사각형용)
+    // 허브별 색상 매핑
     const hubColors = {
       "인물허브": "#ff7f7f",
       "작품허브": "#7fbf7f", 
       "전시허브": "#7f7fff",
       "장소허브": "#ffbf7f",
-      "가족허브": "#bf7fff",
-      "지인허브": "#ff99cc"
+      "신사실파허브": "#ff9999",
+      "지인허브": "#ff99cc",
+      "가족허브": "#bf7fff"
     };
 
-    // 화면 크기 동적 계산
     function getSize() {
       return {
         width: window.innerWidth,
@@ -135,37 +150,67 @@
       };
     }
 
-    // 데이터 구성 (이미지 표 데이터 완전 반영)
+    // 데이터 구성 (새로운 계층 구조)
     const nodes = [
       // 중심 노드
       {id: "장욱진", group: "center", level: 0, type: "center", 
        출생: 1917, 사망: 1990, 태그: "신사실파, 동심의화가"},
       
-      // 허브 노드들 (1차 레벨) - 사각형으로 표시
+      // 1차 허브 노드들
       {id: "인물허브", group: "hub", level: 1, type: "hub", 
-       description: "신사실파 동료 화가들", displayText: "인물"},
+       description: "장욱진과 관련된 인물들", displayText: "인물"},
       {id: "작품허브", group: "hub", level: 1, type: "hub", 
        description: "장욱진 대표작품들", displayText: "작품"},
       {id: "전시허브", group: "hub", level: 1, type: "hub", 
        description: "장욱진 관련 전시", displayText: "전시"},
       {id: "장소허브", group: "hub", level: 1, type: "hub", 
        description: "교육기관 및 미술관", displayText: "장소"},
-      {id: "가족허브", group: "hub", level: 1, type: "hub", 
-       description: "장욱진의 가족", displayText: "가족"},
-      {id: "지인허브", group: "hub", level: 1, type: "hub", 
-       description: "장욱진의 지인들", displayText: "지인"},
       
-      // 인물 노드들 (2차 레벨)
-      {id: "김환기", group: "인물", level: 2, type: "leaf", 
-       출생: 1913, 사망: 1974, 태그: "신사실파"},
-      {id: "유영국", group: "인물", level: 2, type: "leaf", 
-       출생: 1916, 사망: 2002, 태그: "신사실파"},
-      {id: "백영수", group: "인물", level: 2, type: "leaf", 
-       출생: 1922, 사망: 2018, 태그: "신사실파"},
-      {id: "이규상", group: "인물", level: 2, type: "leaf", 
-       출생: 1918, 사망: 1964, 태그: "신사실파"},
-      {id: "이중섭", group: "인물", level: 2, type: "leaf", 
-       출생: 1916, 사망: 1956, 태그: "신사실파"},
+      // 2차 허브 노드들 (인물 세분화)
+      {id: "신사실파허브", group: "sub-hub", level: 2, type: "sub-hub", 
+       description: "신사실파 동료 화가들", displayText: "신사실파"},
+      {id: "지인허브", group: "sub-hub", level: 2, type: "sub-hub", 
+       description: "장욱진의 지인들", displayText: "지인"},
+      {id: "가족허브", group: "sub-hub", level: 2, type: "sub-hub", 
+       description: "장욱진의 가족", displayText: "가족"},
+      
+      // 신사실파 노드들 (3차 레벨)
+      {id: "김환기", group: "신사실파", level: 3, type: "leaf", 
+       출생: 1913, 사망: 1974, 태그: "신사실파, 추상화가"},
+      {id: "유영국", group: "신사실파", level: 3, type: "leaf", 
+       출생: 1916, 사망: 2002, 태그: "신사실파, 기하학적 추상"},
+      {id: "백영수", group: "신사실파", level: 3, type: "leaf", 
+       출생: 1922, 사망: 2018, 태그: "신사실파, 서정적 추상"},
+      {id: "이규상", group: "신사실파", level: 3, type: "leaf", 
+       출생: 1918, 사망: 1964, 태그: "신사실파, 구상화가"},
+      {id: "이중섭", group: "신사실파", level: 3, type: "leaf", 
+       출생: 1916, 사망: 1956, 태그: "신사실파, 서정적 구상"},
+      
+      // 지인 노드들 (3차 레벨)
+      {id: "마해송", group: "지인", level: 3, type: "leaf", 
+       출생: 1905, 사망: 1966, 태그: "아동문학가, 동화작가"},
+      {id: "오수환", group: "지인", level: 3, type: "leaf", 
+       출생: 1946, 태그: "화가, 미술교육자"},
+      {id: "최불암", group: "지인", level: 3, type: "leaf", 
+       출생: 1940, 태그: "배우, 문화예술인"},
+      {id: "이만익", group: "지인", level: 3, type: "leaf", 
+       출생: 1938, 사망: 2012, 태그: "화가, 서양화가"},
+      {id: "최종태", group: "지인", level: 3, type: "leaf", 
+       출생: 1932, 태그: "조각가, 미술교육자"},
+      {id: "경봉스님", group: "지인", level: 3, type: "leaf", 
+       출생: 1892, 사망: 1982, 태그: "승려, 종교인"},
+      
+      // 가족 노드들 (3차 레벨)
+      {id: "이순경", group: "가족", level: 3, type: "leaf", 
+       출생: 1920, 사망: 2022, 태그: "배우자, 아내"},
+      {id: "장정순", group: "가족", level: 3, type: "leaf", 
+       출생: 1942, 태그: "첫째 딸"},
+      {id: "장경수", group: "가족", level: 3, type: "leaf", 
+       출생: 1945, 태그: "아들"},
+      {id: "장희순", group: "가족", level: 3, type: "leaf", 
+       출생: 1947, 태그: "둘째 딸"},
+      {id: "장혜수", group: "가족", level: 3, type: "leaf", 
+       출생: 1951, 태그: "셋째 딸"},
       
       // 작품 노드들 (2차 레벨)
       {id: "독", group: "작품", level: 2, type: "leaf", 
@@ -191,7 +236,7 @@
       {id: "진진묘", group: "작품", level: 2, type: "leaf", 
        제작연도: 1970, 기법: "캔버스에 유채", 크기: "41x32", 소장처: "미공개"},
       
-      // 전시 노드들 (2차 레벨 - 표 데이터 완전 반영)
+      // 전시 노드들 (2차 레벨 - 이미지 데이터 완전 반영)
       {id: "장욱진의 삶과 예술세계", group: "전시", level: 2, type: "leaf", 
        코드: "AE01", 기간: "2017.05.26-2018.07.31", 장소: "양주시립장욱진미술관"},
       {id: "장욱진 백년, 인사동 라인에 서다", group: "전시", level: 2, type: "leaf", 
@@ -207,7 +252,7 @@
       {id: "장욱진의 황금방주", group: "전시", level: 2, type: "leaf", 
        코드: "AE07", 기간: "2024.03.12-2024.07.28", 장소: "양주시립장욱진미술관"},
       
-      // 장소 노드들 (2차 레벨 - 표 데이터 완전 반영)
+      // 장소 노드들 (2차 레벨 - 이미지 데이터 완전 반영)
       {id: "양정고등보통학교", group: "장소", level: 2, type: "leaf", 
        코드: "LC01", 목적: "교육", 위치: "대한민국", 건립: "1905년"},
       {id: "무사시노미술대학", group: "장소", level: 2, type: "leaf", 
@@ -225,7 +270,7 @@
       {id: "양주시립장욱진미술관", group: "장소", level: 2, type: "leaf", 
        코드: "LC08", 목적: "미술전시", 위치: "대한민국", 건립: "2014년"},
       
-      // ★ 추가 장소 노드들 (표에서 빠진 것들 추가) ★
+      // 추가 장소들
       {id: "서울 인사아트센터", group: "장소", level: 2, type: "leaf", 
        목적: "미술전시", 위치: "서울시 종로구", 건립: "2000년대"},
       {id: "여수 예울마루", group: "장소", level: 2, type: "leaf", 
@@ -233,52 +278,45 @@
       {id: "서울 현대화랑", group: "장소", level: 2, type: "leaf", 
        목적: "미술전시", 위치: "서울시 종로구", 건립: "1970년"},
       {id: "국립현대미술관 덕수궁", group: "장소", level: 2, type: "leaf", 
-       목적: "미술전시", 위치: "서울시 중구", 건립: "1998년"},
-      
-      // 가족 노드들 (2차 레벨)
-      {id: "이순경", group: "가족", level: 2, type: "leaf", 
-       출생: 1920, 사망: 2022, 태그: "배우자"},
-      {id: "장정순", group: "가족", level: 2, type: "leaf", 
-       출생: 1942, 태그: "딸"},
-      {id: "장경수", group: "가족", level: 2, type: "leaf", 
-       출생: 1945, 태그: "아들"},
-      {id: "장희순", group: "가족", level: 2, type: "leaf", 
-       출생: 1947, 태그: "딸"},
-      {id: "장혜수", group: "가족", level: 2, type: "leaf", 
-       출생: 1951, 태그: "딸"},
-      
-      // 지인 노드들 (2차 레벨)
-      {id: "마해송", group: "지인", level: 2, type: "leaf", 
-       출생: 1905, 사망: 1966, 태그: "아동문학가"},
-      {id: "오수환", group: "지인", level: 2, type: "leaf", 
-       출생: 1946, 태그: "화가"},
-      {id: "최불암", group: "지인", level: 2, type: "leaf", 
-       출생: 1940, 태그: "배우"},
-      {id: "이만익", group: "지인", level: 2, type: "leaf", 
-       출생: 1938, 사망: 2012, 태그: "화가"},
-      {id: "최종태", group: "지인", level: 2, type: "leaf", 
-       출생: 1932, 태그: "조각가"},
-      {id: "경봉스님", group: "지인", level: 2, type: "leaf", 
-       출생: 1892, 사망: 1982, 태그: "스님"}
+       목적: "미술전시", 위치: "서울시 중구", 건립: "1998년"}
     ];
 
-    // ★ 링크 구성 (표 데이터 기반 완전한 연결관계) ★
+    // 링크 구성 (새로운 계층 구조)
     const links = [
-      // 중심 노드 → 허브 노드들
+      // 중심 노드 → 1차 허브 노드들
       {source: "장욱진", target: "인물허브", type: "center-hub"},
       {source: "장욱진", target: "작품허브", type: "center-hub"},
       {source: "장욱진", target: "전시허브", type: "center-hub"},
       {source: "장욱진", target: "장소허브", type: "center-hub"},
-      {source: "장욱진", target: "가족허브", type: "center-hub"},
-      {source: "장욱진", target: "지인허브", type: "center-hub"},
       
-      // 허브 → 세부 노드들
-      {source: "인물허브", target: "김환기", type: "hub-leaf"},
-      {source: "인물허브", target: "유영국", type: "hub-leaf"},
-      {source: "인물허브", target: "백영수", type: "hub-leaf"},
-      {source: "인물허브", target: "이규상", type: "hub-leaf"},
-      {source: "인물허브", target: "이중섭", type: "hub-leaf"},
+      // 1차 허브 → 2차 허브 (인물 세분화)
+      {source: "인물허브", target: "신사실파허브", type: "hub-sub"},
+      {source: "인물허브", target: "지인허브", type: "hub-sub"},
+      {source: "인물허브", target: "가족허브", type: "hub-sub"},
       
+      // 2차 허브 → 3차 노드들 (신사실파)
+      {source: "신사실파허브", target: "김환기", type: "sub-leaf"},
+      {source: "신사실파허브", target: "유영국", type: "sub-leaf"},
+      {source: "신사실파허브", target: "백영수", type: "sub-leaf"},
+      {source: "신사실파허브", target: "이규상", type: "sub-leaf"},
+      {source: "신사실파허브", target: "이중섭", type: "sub-leaf"},
+      
+      // 2차 허브 → 3차 노드들 (지인)
+      {source: "지인허브", target: "마해송", type: "sub-leaf"},
+      {source: "지인허브", target: "오수환", type: "sub-leaf"},
+      {source: "지인허브", target: "최불암", type: "sub-leaf"},
+      {source: "지인허브", target: "이만익", type: "sub-leaf"},
+      {source: "지인허브", target: "최종태", type: "sub-leaf"},
+      {source: "지인허브", target: "경봉스님", type: "sub-leaf"},
+      
+      // 2차 허브 → 3차 노드들 (가족)
+      {source: "가족허브", target: "이순경", type: "sub-leaf"},
+      {source: "가족허브", target: "장정순", type: "sub-leaf"},
+      {source: "가족허브", target: "장경수", type: "sub-leaf"},
+      {source: "가족허브", target: "장희순", type: "sub-leaf"},
+      {source: "가족허브", target: "장혜수", type: "sub-leaf"},
+      
+      // 1차 허브 → 2차 노드들 (작품)
       {source: "작품허브", target: "독", type: "hub-leaf"},
       {source: "작품허브", target: "자화상", type: "hub-leaf"},
       {source: "작품허브", target: "까치", type: "hub-leaf"},
@@ -291,6 +329,7 @@
       {source: "작품허브", target: "나무와 나", type: "hub-leaf"},
       {source: "작품허브", target: "진진묘", type: "hub-leaf"},
       
+      // 1차 허브 → 2차 노드들 (전시)
       {source: "전시허브", target: "장욱진의 삶과 예술세계", type: "hub-leaf"},
       {source: "전시허브", target: "장욱진 백년, 인사동 라인에 서다", type: "hub-leaf"},
       {source: "전시허브", target: "한국 근현대미술 걸작전", type: "hub-leaf"},
@@ -299,6 +338,7 @@
       {source: "전시허브", target: "가장 진지한 고백: 장욱진 회고전", type: "hub-leaf"},
       {source: "전시허브", target: "장욱진의 황금방주", type: "hub-leaf"},
       
+      // 1차 허브 → 2차 노드들 (장소)
       {source: "장소허브", target: "양정고등보통학교", type: "hub-leaf"},
       {source: "장소허브", target: "무사시노미술대학", type: "hub-leaf"},
       {source: "장소허브", target: "서울대학교", type: "hub-leaf"},
@@ -312,22 +352,7 @@
       {source: "장소허브", target: "서울 현대화랑", type: "hub-leaf"},
       {source: "장소허브", target: "국립현대미술관 덕수궁", type: "hub-leaf"},
       
-      {source: "가족허브", target: "이순경", type: "hub-leaf"},
-      {source: "가족허브", target: "장정순", type: "hub-leaf"},
-      {source: "가족허브", target: "장경수", type: "hub-leaf"},
-      {source: "가족허브", target: "장희순", type: "hub-leaf"},
-      {source: "가족허브", target: "장혜수", type: "hub-leaf"},
-      
-      {source: "지인허브", target: "마해송", type: "hub-leaf"},
-      {source: "지인허브", target: "오수환", type: "hub-leaf"},
-      {source: "지인허브", target: "최불암", type: "hub-leaf"},
-      {source: "지인허브", target: "이만익", type: "hub-leaf"},
-      {source: "지인허브", target: "최종태", type: "hub-leaf"},
-      {source: "지인허브", target: "경봉스님", type: "hub-leaf"},
-      
-      // ★ 2차 요소간 직접 연결 (완전한 연결관계) ★
-      
-      // 신사실파 화가들끼리 연결
+      // 3차 요소간 직접 연결 (신사실파끼리)
       {source: "김환기", target: "유영국", type: "peer"},
       {source: "김환기", target: "백영수", type: "peer"},
       {source: "김환기", target: "이규상", type: "peer"},
@@ -357,7 +382,7 @@
       {source: "나무와 나", target: "양주시립장욱진미술관", type: "peer"},
       {source: "가로수", target: "장욱진미술문화재단", type: "peer"},
       
-      // ★ 전시-장소 연결 (표 데이터 완전 반영) ★
+      // 전시-장소 연결
       {source: "장욱진의 삶과 예술세계", target: "양주시립장욱진미술관", type: "peer"},
       {source: "장욱진 백년, 인사동 라인에 서다", target: "서울 인사아트센터", type: "peer"},
       {source: "한국 근현대미술 걸작전", target: "여수 예울마루", type: "peer"},
@@ -365,7 +390,6 @@
       {source: "장욱진 30주기 기념전, 기가, 자연", target: "서울 현대화랑", type: "peer"},
       {source: "가장 진지한 고백: 장욱진 회고전", target: "국립현대미술관 덕수궁", type: "peer"},
       {source: "장욱진의 황금방주", target: "양주시립장욱진미술관", type: "peer"},
-      
       
       // 가족과 거주지 연결
       {source: "이순경", target: "장욱진고택", type: "peer"},
@@ -379,21 +403,19 @@
       {source: "최불암", target: "경봉스님", type: "peer"}
     ];
 
-    // SVG 및 시뮬레이션 설정 (기존과 동일)
+    // SVG 및 시뮬레이션 설정
     let {width, height} = getSize();
     const svg = d3.select("#network")
       .attr("width", "100%")
       .attr("height", "100%")
       .attr("viewBox", `0 0 ${width} ${height}`);
 
-    // 확대/축소
     const container = svg.append("g");
     svg.call(d3.zoom()
-      .scaleExtent([0.3, 3])
+      .scaleExtent([0.2, 4])
       .on("zoom", ({transform}) => container.attr("transform", transform))
     );
 
-    // 링크
     const link = container.append("g")
       .attr("stroke", "#999")
       .attr("stroke-opacity", 0.6)
@@ -402,49 +424,45 @@
       .join("line")
       .attr("stroke-width", d => {
         if (d.type === "center-hub") return 4;
+        if (d.type === "hub-sub") return 3;
+        if (d.type === "sub-leaf") return 2;
         if (d.type === "hub-leaf") return 2;
-        if (d.type === "direct") return 3;
         if (d.type === "peer") return 1.5;
         return 2;
       })
       .attr("stroke-dasharray", d => {
         if (d.type === "peer") return "5,5";
-        if (d.type === "direct") return "10,5";
         return null;
       })
-      .attr("stroke", d => {
-        if (d.type === "direct") return "#ff6600";
-        return "#999";
-      });
+      .attr("stroke", "#999");
 
-    // 노드 그룹
     const node = container.append("g")
       .selectAll("g")
       .data(nodes)
       .join("g")
       .attr("class", d => `node ${d.type}`);
 
-    // 허브는 사각형, 나머지는 원형
     node.each(function(d) {
       const g = d3.select(this);
       
-      if (d.type === "hub") {
+      if (d.type === "hub" || d.type === "sub-hub") {
         // 허브 노드는 사각형으로 생성
+        const size = d.type === "hub" ? {width: 80, height: 40} : {width: 70, height: 35};
         g.append("rect")
-          .attr("width", 80)
-          .attr("height", 40)
-          .attr("x", -40)
-          .attr("y", -20)
+          .attr("width", size.width)
+          .attr("height", size.height)
+          .attr("x", -size.width/2)
+          .attr("y", -size.height/2)
           .attr("fill", hubColors[d.id] || "#333")
           .attr("stroke", "#666")
-          .attr("stroke-width", 3)
+          .attr("stroke-width", d.type === "hub" ? 3 : 2)
           .attr("rx", 5)
-          .attr("class", "hub-node");
+          .attr("class", d.type + "-node");
         
         // 허브 텍스트
         g.append("text")
           .text(d.displayText)
-          .attr("class", "hub-text")
+          .attr("class", d.type === "hub" ? "hub-text" : "sub-hub-text")
           .attr("x", 0)
           .attr("y", 0);
           
@@ -453,18 +471,18 @@
         g.append("circle")
           .attr("r", d => {
             if (d.type === "center") return 40;
-            if (d.group === "인물") return 20;
+            if (d.group === "신사실파") return 18;
+            if (d.group === "지인") return 16;
+            if (d.group === "가족") return 18;
             if (d.group === "작품") return 16;
             if (d.group === "전시") return 18;
             if (d.group === "장소") return 20;
-            if (d.group === "가족") return 18;
-            if (d.group === "지인") return 16;
             return 14;
           })
           .attr("fill", d => color(d.group))
           .attr("stroke", "#fff")
           .attr("stroke-width", 2)
-          .attr("class", d => d.type + "-node");
+          .attr("class", "leaf-node");
         
         // 일반 노드 텍스트
         g.append("text")
@@ -477,15 +495,15 @@
       }
     });
 
-    // 툴팁 (기존과 동일)
+    // 툴팁
     const tooltip = d3.select("#tooltip");
     node.on("mouseover", (event, d) => {
       let html = `<b>${d.id}</b><br>`;
-      if (d.type === "hub") {
+      if (d.type === "hub" || d.type === "sub-hub") {
         html += d.description ? `${d.description}<br>` : '';
       }
       if (d.코드) html += `코드: ${d.코드}<br>`;
-      if (d.group === "인물" || d.group === "가족" || d.group === "지인" || d.group === "center") {
+      if (d.group === "신사실파" || d.group === "지인" || d.group === "가족" || d.group === "center") {
         html += d.출생 ? `출생: ${d.출생}` : '';
         html += d.사망 ? ` - 사망: ${d.사망}<br>` : '<br>';
         html += d.태그 ? `태그: ${d.태그}<br>` : '';
@@ -514,36 +532,40 @@
         .style("top", (event.pageY - 10) + "px");
     }).on("mouseout", () => tooltip.style("display", "none"));
 
-    // 드래그 (기존과 동일)
+    // 드래그
     node.call(d3.drag()
       .on("start", dragstarted)
       .on("drag", dragged)
       .on("end", dragended)
     );
 
-    // 시뮬레이션 (기존과 동일)
+    // 시뮬레이션 (계층 구조에 맞게 조정)
     let simulation = d3.forceSimulation(nodes)
       .force("link", d3.forceLink(links).id(d => d.id).distance(d => {
-        if (d.type === "center-hub") return 200;
-        if (d.type === "hub-leaf") return 150;
-        if (d.type === "direct") return 100;
-        if (d.type === "peer") return 80;
-        return 120;
+        if (d.type === "center-hub") return 180;
+        if (d.type === "hub-sub") return 120;
+        if (d.type === "sub-leaf") return 100;
+        if (d.type === "hub-leaf") return 120;
+        if (d.type === "peer") return 60;
+        return 100;
       }))
       .force("charge", d3.forceManyBody().strength(d => {
-        if (d.type === "center") return -800;
-        if (d.type === "hub") return -600;
-        return -300;
+        if (d.type === "center") return -1000;
+        if (d.type === "hub") return -800;
+        if (d.type === "sub-hub") return -600;
+        return -250;
       }))
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force("radial", d3.forceRadial(d => {
         if (d.type === "center") return 0;
-        if (d.type === "hub") return 200;
-        return 350;
+        if (d.type === "hub") return 180;
+        if (d.type === "sub-hub") return 280;
+        return 380;
       }, width / 2, height / 2))
       .force("collision", d3.forceCollide().radius(d => {
         if (d.type === "center") return 50;
         if (d.type === "hub") return 50;
+        if (d.type === "sub-hub") return 45;
         return 25;
       }));
 
@@ -570,7 +592,7 @@
       d.fx = null; d.fy = null;
     }
 
-    // 검색 기능 (기존과 동일)
+    // 검색 기능
     d3.select("#search").on("input", function() {
       const term = this.value.trim().toLowerCase();
       
@@ -579,11 +601,13 @@
         .attr("stroke", d => {
           if (d.type === "center") return "#333";
           if (d.type === "hub") return "#666";
+          if (d.type === "sub-hub") return "#888";
           return "#fff";
         })
         .attr("stroke-width", d => {
           if (d.type === "center") return 4;
           if (d.type === "hub") return 3;
+          if (d.type === "sub-hub") return 2;
           return 2;
         });
       
@@ -591,10 +615,10 @@
         .classed("highlighted-text", false)
         .attr("font-weight", d => {
           if (d.type === "center") return "bold";
-          if (d.type === "hub") return "bold";
+          if (d.type === "hub" || d.type === "sub-hub") return "bold";
           return "normal";
         })
-        .attr("fill", d => d.type === "hub" ? "white" : "#444");
+        .attr("fill", d => (d.type === "hub" || d.type === "sub-hub") ? "white" : "#444");
       
       if (term) {
         const matchedNodes = nodes.filter(d => 
@@ -618,7 +642,7 @@
       }
     });
 
-    // 창 크기 변경 시 반응형 처리 (기존과 동일)
+    // 창 크기 변경 시 반응형 처리
     window.addEventListener("resize", () => {
       const size = getSize();
       svg.attr("viewBox", `0 0 ${size.width} ${size.height}`);
@@ -626,8 +650,9 @@
       simulation.force("center", d3.forceCenter(size.width / 2, size.height / 2));
       simulation.force("radial", d3.forceRadial(d => {
         if (d.type === "center") return 0;
-        if (d.type === "hub") return 200;
-        return 350;
+        if (d.type === "hub") return 180;
+        if (d.type === "sub-hub") return 280;
+        return 380;
       }, size.width / 2, size.height / 2));
       simulation.alpha(0.5).restart();
     });
